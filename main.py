@@ -55,7 +55,7 @@ for r in range(number_of_rois):
     x_green, y_green, s_green = get_data('green', 'caspr.png', r)
     x_red, y_red, s_red = get_data('red', 'nav.png', r)
 
-    # Sometimes there are local minima at the edges... the below code reslices s_green to focus on the middle
+    # Sometimes there are local minima at the edges... the below code re-slices s_green to focus on the middle
     caspr_trough_index = np.where(s_green == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]))
     caspr_trough_distance = (x_green / PIXEL_RESOLUTION)[caspr_trough_index]
 
@@ -66,7 +66,8 @@ for r in range(number_of_rois):
     right_perinode_distance = (x_green / PIXEL_RESOLUTION)[right_perinode_max_index]
 
     average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
-    threshold = 0.5 * average_maxima
+    minima = s_green[caspr_trough_index][0]
+    threshold = minima + ((average_maxima - minima) / 2)
 
     critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION,
                          left_perinode_max_index / PIXEL_RESOLUTION,
@@ -74,6 +75,7 @@ for r in range(number_of_rois):
     critical_points_y = [s_green[caspr_trough_index][0], s_green[left_perinode_max_index],
                          s_green[right_perinode_max_index]]
 
+    # Plotting
     fig = plt.figure(figsize=(12, 8))
     ax = plt.axes()
     ax.set_facecolor("#949494")
