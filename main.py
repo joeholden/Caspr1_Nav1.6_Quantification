@@ -19,22 +19,24 @@ def get_data(channel, img_path, roi_number):
 
     roi_list = sorted(os.listdir('RoiSet'))
     roi = ImagejRoi.fromfile(f'RoiSet/{roi_list[roi_number]}')
-    print(roi)
+    # print(roi)
 
     x_1 = int(roi.x1)
     x_2 = int(roi.x2)
     y_1 = int(roi.y1)
     y_2 = int(roi.y2)
 
+    # Linear interpolation of pixels isn't as straightforward as y=mx+b.
+    # Bresenham's algorithm determines the pixels to color to render a line between two points.
     px_array = list(bresenham(x_1, y_1, x_2, y_2))
 
     im = Image.open(image_path)
     im = im.convert('RGB')
     pixel_map = im.load()
 
-    y_array = []
-    x_array = np.arange(0, len(px_array))
-    # x_array = np.flipud(x_array)
+    intensity_array = []
+    distance_array = np.arange(0, len(px_array))
+    # distance_array = np.flipud(distance_array)
 
     for i in range(im.width):
         for j in range(im.height):
@@ -43,11 +45,11 @@ def get_data(channel, img_path, roi_number):
                     intensity = pixel_map[i, j][0]
                 else:
                     intensity = pixel_map[i, j][1]
-                y_array.append(intensity)
+                intensity_array.append(intensity)
 
-    smooth_y = scipy.signal.savgol_filter(y_array, 51, 10)
+    smooth_y = scipy.signal.savgol_filter(intensity_array, 51, 10)
 
-    return x_array, y_array, smooth_y
+    return distance_array, intensity_array, smooth_y
 
 
 number_of_rois = len(os.listdir('RoiSet'))
@@ -71,10 +73,12 @@ for r in range(number_of_rois):
     threshold = minima + ((average_maxima - minima) / 2)
 
     # Get Bounds of peri-nodes
-    # [Right Side]
+    # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
+
     hit_min = False
     cross_up = False
     bounds_array = []
+
     for entry in s_green[caspr_trough_index[0][0]:]:
         if entry == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]):
             hit_min = True
@@ -88,7 +92,7 @@ for r in range(number_of_rois):
     right_perinode_bound1 = bounds_array[0]
     right_perinode_bound2 = bounds_array[-1]
 
-    # [Left Side]
+    # [Left Side]: Same idea as for the right side. Flipped array so that it starts at the minima
     cross_up = False
     bounds_array2 = []
     s_green_from_min_to_start = np.flipud(s_green[0:caspr_trough_index[0][0]])
@@ -114,13 +118,13 @@ for r in range(number_of_rois):
 
     # area_paranode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
-    # Plotting
+    # Plotting and Visualization
     fig = plt.figure(figsize=(12, 8))
     ax = plt.axes()
     ax.set_facecolor("#949494")
     plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#296600')
     plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dd0000')
-    plt.scatter(critical_points_x, critical_points_y)
+    plt.scatter(critical_points_x, critical_points_y, color = 'green')
     plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='#ec9706', label='Threshold')
 
     plt.ylabel('8-bit Intensity', fontsize=14)
