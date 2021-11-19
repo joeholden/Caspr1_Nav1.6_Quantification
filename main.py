@@ -60,19 +60,24 @@ for r in range(number_of_rois):
     # Sometimes there are local minima at the edges... the below code re-slices s_green to focus on the middle
     caspr_trough_index = np.where(s_green == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]))
     caspr_trough_distance = (x_green / PIXEL_RESOLUTION)[caspr_trough_index]
+    caspr_trough_intensity = s_green[caspr_trough_index][0]
 
     left_perinode_max_index = np.where(s_green == max(s_green[caspr_trough_index[0][0]:]))[0][0]
     left_perinode_distance = (x_green / PIXEL_RESOLUTION)[left_perinode_max_index]
+    left_perinode_intensity = s_green[left_perinode_max_index]
 
     right_perinode_max_index = np.where(s_green == max(s_green[0:caspr_trough_index[0][0]]))[0][0]
     right_perinode_distance = (x_green / PIXEL_RESOLUTION)[right_perinode_max_index]
+    right_perinode_intensity = s_green[right_perinode_max_index]
 
     average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
     minima = s_green[caspr_trough_index][0]
     threshold = minima + ((average_maxima - minima) / 2)
+    average_perinode_intensity = round((left_perinode_intensity + right_perinode_intensity) / 2, 0)
 
     nav_peak_index = np.where(s_red == max(s_red[int(len(s_red) * .25): int(len(s_red) * .75)]))
     nav_peak_distance = (x_red / PIXEL_RESOLUTION)[nav_peak_index]
+    nav_peak_intensity = round(s_red[nav_peak_index][0], 0)
 
     # Get Bounds of peri-nodes
     # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
@@ -128,19 +133,23 @@ for r in range(number_of_rois):
     node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
     node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
 
-    results_list = [f'{roi_name_1}', average_perinode_length, node_length, node_shift]
+    results_list = [f'{roi_name_1}', average_perinode_length, node_length, node_shift,
+                    average_perinode_intensity, nav_peak_intensity]
     results_dict = {
         'ROI Name': f'{roi_name_1}',
         'Avg. Perinode Length (um)': average_perinode_length,
         'Node Length (um)': node_length,
-        'Node Shift (um)': node_shift
+        'Node Shift (um)': node_shift,
+        'Avg. Peak Perinode Intensity': average_perinode_intensity,
+        'Peak NaV Intensity': nav_peak_intensity
     }
 
     try:
         df = df.append(results_dict, ignore_index=True)
     except NameError:
         df = pd.DataFrame(results_list).T
-        df.columns = ['ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)', 'Node Shift (um)']
+        df.columns = ['ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)', 'Node Shift (um)',
+                      'Avg. Peak Perinode Intensity', 'Peak NaV Intensity']
 
     # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
