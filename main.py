@@ -19,7 +19,6 @@ def get_data(channel, img_path, roi_number):
 
     roi_list = sorted(os.listdir('RoiSet'))
     roi = ImagejRoi.fromfile(f'RoiSet/{roi_list[roi_number]}')
-    # print(roi)
 
     x_1 = int(roi.x1)
     x_2 = int(roi.x2)
@@ -49,14 +48,14 @@ def get_data(channel, img_path, roi_number):
 
     smooth_y = scipy.signal.savgol_filter(intensity_array, 51, 10)
 
-    return distance_array, intensity_array, smooth_y
+    return distance_array, intensity_array, smooth_y, roi.name
 
 
 number_of_rois = len(os.listdir('RoiSet'))
 
 for r in range(number_of_rois):
-    x_green, y_green, s_green = get_data('green', 'caspr.png', r)
-    x_red, y_red, s_red = get_data('red', 'nav.png', r)
+    x_green, y_green, s_green, roi_name_1 = get_data('green', 'caspr.png', r)
+    x_red, y_red, s_red, roi_name_2 = get_data('red', 'nav.png', r)
 
     # Sometimes there are local minima at the edges... the below code re-slices s_green to focus on the middle
     caspr_trough_index = np.where(s_green == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]))
@@ -71,6 +70,9 @@ for r in range(number_of_rois):
     average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
     minima = s_green[caspr_trough_index][0]
     threshold = minima + ((average_maxima - minima) / 2)
+
+    nav_peak_index = np.where(s_red == max(s_red[int(len(s_red) * .25): int(len(s_red) * .75)]))
+    nav_peak_distance = (x_red / PIXEL_RESOLUTION)[nav_peak_index]
 
     # Get Bounds of peri-nodes
     # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
@@ -108,15 +110,39 @@ for r in range(number_of_rois):
     left_perinode_bound2 = bounds_array2[-1]
 
     # Critical Points for Scatter Plot Visualization
-    critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION,
-                         left_perinode_max_index / PIXEL_RESOLUTION,
+    critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION, left_perinode_max_index / PIXEL_RESOLUTION,
                          right_perinode_max_index / PIXEL_RESOLUTION, right_perinode_bound1 / PIXEL_RESOLUTION,
                          right_perinode_bound2 / PIXEL_RESOLUTION, left_perinode_bound1 / PIXEL_RESOLUTION,
                          left_perinode_bound2 / PIXEL_RESOLUTION]
     critical_points_y = [s_green[caspr_trough_index][0], s_green[left_perinode_max_index],
                          s_green[right_perinode_max_index], threshold, threshold, threshold, threshold]
 
-    # area_paranode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
+    red_peak_x = [nav_peak_index[0] / PIXEL_RESOLUTION]
+    red_peak_y = [s_red[nav_peak_index][0]]
+
+    # Get Node Measurements
+    left_perinode_length = abs(left_perinode_bound1 - left_perinode_bound2) / PIXEL_RESOLUTION
+    right_perinode_length = abs(right_perinode_bound1 - right_perinode_bound2) / PIXEL_RESOLUTION
+
+    average_perinode_length = round((left_perinode_length + right_perinode_length) / 2, 2)
+    node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
+    node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
+
+    results_list = [f'{roi_name_1}', average_perinode_length, node_length, node_shift]
+    results_dict = {
+        'ROI Name': f'{roi_name_1}',
+        'Avg. Perinode Length (um)': average_perinode_length,
+        'Node Length (um)': node_length,
+        'Node Shift (um)': node_shift
+    }
+
+    try:
+        df = df.append(results_dict, ignore_index=True)
+    except NameError:
+        df = pd.DataFrame(results_list).T
+        df.columns = ['ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)', 'Node Shift (um)']
+
+    # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
     # Plotting and Visualization
     fig = plt.figure(figsize=(12, 8))
@@ -124,7 +150,8 @@ for r in range(number_of_rois):
     ax.set_facecolor("#949494")
     plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#296600')
     plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dd0000')
-    plt.scatter(critical_points_x, critical_points_y, color = 'green')
+    plt.scatter(critical_points_x, critical_points_y, color='green')
+    plt.scatter(red_peak_x, red_peak_y, color='red')
     plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='#ec9706', label='Threshold')
 
     plt.ylabel('8-bit Intensity', fontsize=14)
@@ -132,4 +159,6 @@ for r in range(number_of_rois):
     plt.title('Caspr1 & Nav1.6 Intensity Distributions', fontsize=16)
 
     plt.legend()
-    plt.show()
+    plt.savefig(f'figures/{roi_name_1}.png')
+
+df.to_excel('Results.xlsx')
