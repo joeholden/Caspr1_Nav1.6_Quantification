@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from bresenham import bresenham
 import scipy
 from scipy import signal
+from scipy import integrate
 import pandas as pd
 
 # Pixel resolution px/um
@@ -69,11 +70,49 @@ for r in range(number_of_rois):
     minima = s_green[caspr_trough_index][0]
     threshold = minima + ((average_maxima - minima) / 2)
 
+    # Get Bounds of peri-nodes
+    # [Right Side]
+    hit_min = False
+    cross_up = False
+    bounds_array = []
+    for entry in s_green[caspr_trough_index[0][0]:]:
+        if entry == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]):
+            hit_min = True
+        if entry >= threshold and hit_min:
+            cross_up = True
+            right_perinode_bound = np.where(s_green == entry)[0][0]
+            bounds_array.append(right_perinode_bound)
+        if entry <= threshold and cross_up:
+            break
+
+    right_perinode_bound1 = bounds_array[0]
+    right_perinode_bound2 = bounds_array[-1]
+
+    # [Left Side]
+    cross_up = False
+    bounds_array2 = []
+    s_green_from_min_to_start = np.flipud(s_green[0:caspr_trough_index[0][0]])
+    for entry in s_green_from_min_to_start:
+        if entry >= threshold:
+            cross_up = True
+            left_perinode_bound = np.where(s_green == entry)[0][0]
+            bounds_array2.append(left_perinode_bound)
+        if entry <= threshold and cross_up:
+            break
+
+    left_perinode_bound1 = bounds_array2[0]
+    left_perinode_bound2 = bounds_array2[-1]
+
+    # Critical Points for Scatter Plot Visualization
     critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION,
                          left_perinode_max_index / PIXEL_RESOLUTION,
-                         right_perinode_max_index / PIXEL_RESOLUTION]
+                         right_perinode_max_index / PIXEL_RESOLUTION, right_perinode_bound1 / PIXEL_RESOLUTION,
+                         right_perinode_bound2 / PIXEL_RESOLUTION, left_perinode_bound1 / PIXEL_RESOLUTION,
+                         left_perinode_bound2 / PIXEL_RESOLUTION]
     critical_points_y = [s_green[caspr_trough_index][0], s_green[left_perinode_max_index],
-                         s_green[right_perinode_max_index]]
+                         s_green[right_perinode_max_index], threshold, threshold, threshold, threshold]
+
+    # area_paranode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
     # Plotting
     fig = plt.figure(figsize=(12, 8))
