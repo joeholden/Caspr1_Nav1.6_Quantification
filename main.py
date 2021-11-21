@@ -20,22 +20,69 @@ def get_data(channel, img_path, roi_number):
     roi_list = sorted(os.listdir('RoiSet'))
     roi = ImagejRoi.fromfile(f'RoiSet/{roi_list[roi_number]}')
 
-    x_1 = int(roi.x1)
-    x_2 = int(roi.x2)
-    y_1 = int(roi.y1)
-    y_2 = int(roi.y2)
-
     # Linear interpolation of pixels isn't as straightforward as y=mx+b.
     # Bresenham's algorithm determines the pixels to color to render a line between two points.
-    px_array = list(bresenham(x_1, y_1, x_2, y_2))
+    # The exception handling below is due to some people using segmented lines and other the straight line.
+
+    try:
+        length = len(roi.subpixel_coordinates)
+        if length == 2:
+            # segment_type = 'segmented line'
+            coordinates = roi.subpixel_coordinates
+            x1 = round(coordinates[0][0], 0)
+            x2 = round(coordinates[1][0], 0)
+            y1 = round(coordinates[0][1], 0)
+            y2 = round(coordinates[1][1], 0)
+        elif length == 3:
+            # segment_type = 'branched segment'
+            coordinates = roi.subpixel_coordinates
+            x1 = round(coordinates[0][0], 0)
+            x2 = round(coordinates[1][0], 0)
+            x3 = round(coordinates[2][0], 0)
+            y1 = round(coordinates[0][1], 0)
+            y2 = round(coordinates[1][1], 0)
+            y3 = round(coordinates[2][1], 0)
+        elif length == 4:
+            # segment_type = 'extra branched segment'
+            coordinates = roi.subpixel_coordinates
+            x1 = round(coordinates[0][0], 0)
+            x2 = round(coordinates[1][0], 0)
+            x3 = round(coordinates[2][0], 0)
+            x4 = round(coordinates[3][0], 0)
+            y1 = round(coordinates[0][1], 0)
+            y2 = round(coordinates[1][1], 0)
+            y3 = round(coordinates[2][1], 0)
+            y4 = round(coordinates[3][1], 0)
+        else:
+            # segment_type = 'other'
+            pass
+    except TypeError:
+        # segment_type = 'true line'
+        x1 = round(roi.x1, 0)
+        x2 = round(roi.x2, 0)
+        y1 = round(roi.y1, 0)
+        y2 = round(roi.y2, 0)
+
+    px_array_1 = list(bresenham(int(x1), int(y1), int(x2), int(y2)))
+    px_array_2 = []
+    px_array_3 = []
+
+    try:
+        px_array_2 = list(bresenham(int(x2), int(y2), int(x3), int(y3)))
+    except NameError:
+        pass
+    try:
+        px_array_3 = list(bresenham(int(x3), int(y3), int(x4), int(y4)))
+    except NameError:
+        pass
+
+    px_array = px_array_1 + px_array_2 + px_array_3
 
     im = Image.open(image_path)
     im = im.convert('RGB')
     pixel_map = im.load()
 
     intensity_array = []
-    distance_array = np.arange(0, len(px_array))
-    # distance_array = np.flipud(distance_array)
 
     for i in range(im.width):
         for j in range(im.height):
@@ -46,7 +93,18 @@ def get_data(channel, img_path, roi_number):
                     intensity = pixel_map[i, j][1]
                 intensity_array.append(intensity)
 
-    smooth_y = scipy.signal.savgol_filter(intensity_array, 51, 10)
+    distance_array = np.arange(0, len(intensity_array))
+    # distance_array = np.flipud(distance_array)
+
+
+    try:
+        smooth_y = scipy.signal.savgol_filter(intensity_array, 51, 10)
+    except ValueError:
+        length_of_intensity_array = len(intensity_array)
+        if length_of_intensity_array % 2 == 0:
+            smooth_y = scipy.signal.savgol_filter(intensity_array, length_of_intensity_array - 3, 10)
+        else:
+            smooth_y = scipy.signal.savgol_filter(intensity_array, length_of_intensity_array - 2, 10)
 
     return distance_array, intensity_array, smooth_y, roi.name
 
@@ -156,18 +214,18 @@ for r in range(number_of_rois):
     # Plotting and Visualization
     fig = plt.figure(figsize=(12, 8))
     ax = plt.axes()
-    ax.set_facecolor("#949494")
-    plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#296600')
-    plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dd0000')
+    ax.set_facecolor("#7c8594")
+    plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#0e1d35')
+    plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dddee5')
     plt.scatter(critical_points_x, critical_points_y, color='green')
-    plt.scatter(red_peak_x, red_peak_y, color='red')
-    plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='#ec9706', label='Threshold')
+    plt.scatter(red_peak_x, red_peak_y, color='green')
+    plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
 
     plt.ylabel('8-bit Intensity', fontsize=14)
     plt.xlabel('Distance in Microns', fontsize=14)
-    plt.title('Caspr1 & Nav1.6 Intensity Distributions', fontsize=16)
+    plt.title(f'Caspr1 & Nav1.6 Intensity Distributions\n ROI:{roi_name_1}', fontsize=16)
 
-    plt.legend()
+    plt.legend(facecolor='#7c8594')
     plt.savefig(f'figures/{roi_name_1}.png')
 
 df.to_excel('Results.xlsx')
