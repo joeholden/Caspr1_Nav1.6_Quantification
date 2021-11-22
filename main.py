@@ -152,7 +152,8 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                     cross_up = True
                     right_perinode_bound = np.where(s_green == entry)[0][0]
                     bounds_array.append(right_perinode_bound)
-                if entry <= threshold and cross_up:
+                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] <= right_perinode_max_index:
+                    # print(entry, threshold, np.where(s_green == entry)[0][0], right_perinode_max_index)
                     break
 
             right_perinode_bound1 = bounds_array[0]
@@ -167,7 +168,8 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                     cross_up = True
                     left_perinode_bound = np.where(s_green == entry)[0][0]
                     bounds_array2.append(left_perinode_bound)
-                if entry <= threshold and cross_up:
+                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] >= left_perinode_max_index:
+                    print(entry, threshold, np.where(s_green == entry)[0][0], left_perinode_max_index)
                     break
 
             left_perinode_bound1 = bounds_array2[0]
@@ -271,5 +273,5 @@ def process_animal(animal_identity, eye_side):
                                       nav_image_path=f'{animal_identity}/{eye_side}/{nav}')
 
 
-process_animal('1', 'Left')
-process_animal('1', 'Right')
+process_animal('12', 'Left')
+process_animal('12', 'Right')
