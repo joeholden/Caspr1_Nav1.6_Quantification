@@ -243,7 +243,10 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
             plt.savefig(f'figures/{roi_name_1}.png')
             plt.close(fig)
         except Exception as e:
-            print(f'Error with {roi_name_1}: {e}')
+            try:
+                print(f'Error with {roi_name_1}: {e}')
+            except UnboundLocalError:
+                print(f'Error with Unknown ROI: {e}')
 
     df.to_excel(f'Excel Output/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
 
@@ -268,5 +271,5 @@ def process_animal(animal_identity, eye_side):
                                       nav_image_path=f'{animal_identity}/{eye_side}/{nav}')
 
 
-process_animal('12', 'Left')
-process_animal('12', 'Right')
+process_animal('1', 'Left')
+process_animal('1', 'Right')
