@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from bresenham import bresenham
 import scipy
 from scipy import signal
-from scipy import integrate
+import re
 import pandas as pd
 
 # Pixel resolution px/um
@@ -96,7 +96,6 @@ def get_data(channel, img_path, roi_number):
     distance_array = np.arange(0, len(intensity_array))
     # distance_array = np.flipud(distance_array)
 
-
     try:
         smooth_y = scipy.signal.savgol_filter(intensity_array, 51, 10)
     except ValueError:
@@ -109,123 +108,140 @@ def get_data(channel, img_path, roi_number):
     return distance_array, intensity_array, smooth_y, roi.name
 
 
-number_of_rois = len(os.listdir('RoiSet'))
+def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
+    number_of_rois = len(os.listdir('RoiSet'))
 
-for r in range(number_of_rois):
-    x_green, y_green, s_green, roi_name_1 = get_data('green', 'caspr.png', r)
-    x_red, y_red, s_red, roi_name_2 = get_data('red', 'nav.png', r)
+    for r in range(number_of_rois):
+        try:
+            x_green, y_green, s_green, roi_name_1 = get_data('green', caspr_image_path, r)
+            x_red, y_red, s_red, roi_name_2 = get_data('red', nav_image_path, r)
 
-    # Sometimes there are local minima at the edges... the below code re-slices s_green to focus on the middle
-    caspr_trough_index = np.where(s_green == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]))
-    caspr_trough_distance = (x_green / PIXEL_RESOLUTION)[caspr_trough_index]
-    caspr_trough_intensity = s_green[caspr_trough_index][0]
+            # Sometimes there are local minima at the edges... the below code re-slices s_green to focus on the middle
+            caspr_trough_index = np.where(s_green == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]))
+            caspr_trough_distance = (x_green / PIXEL_RESOLUTION)[caspr_trough_index]
+            caspr_trough_intensity = s_green[caspr_trough_index][0]
 
-    left_perinode_max_index = np.where(s_green == max(s_green[caspr_trough_index[0][0]:]))[0][0]
-    left_perinode_distance = (x_green / PIXEL_RESOLUTION)[left_perinode_max_index]
-    left_perinode_intensity = s_green[left_perinode_max_index]
+            left_perinode_max_index = np.where(s_green == max(s_green[caspr_trough_index[0][0]:]))[0][0]
+            left_perinode_distance = (x_green / PIXEL_RESOLUTION)[left_perinode_max_index]
+            left_perinode_intensity = s_green[left_perinode_max_index]
 
-    right_perinode_max_index = np.where(s_green == max(s_green[0:caspr_trough_index[0][0]]))[0][0]
-    right_perinode_distance = (x_green / PIXEL_RESOLUTION)[right_perinode_max_index]
-    right_perinode_intensity = s_green[right_perinode_max_index]
+            right_perinode_max_index = np.where(s_green == max(s_green[0:caspr_trough_index[0][0]]))[0][0]
+            right_perinode_distance = (x_green / PIXEL_RESOLUTION)[right_perinode_max_index]
+            right_perinode_intensity = s_green[right_perinode_max_index]
 
-    average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
-    minima = s_green[caspr_trough_index][0]
-    threshold = minima + ((average_maxima - minima) / 2)
-    average_perinode_intensity = round((left_perinode_intensity + right_perinode_intensity) / 2, 0)
+            average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
+            minima = s_green[caspr_trough_index][0]
+            threshold = minima + ((average_maxima - minima) / 2)
+            average_perinode_intensity = round((left_perinode_intensity + right_perinode_intensity) / 2, 0)
 
-    nav_peak_index = np.where(s_red == max(s_red[int(len(s_red) * .25): int(len(s_red) * .75)]))
-    nav_peak_distance = (x_red / PIXEL_RESOLUTION)[nav_peak_index]
-    nav_peak_intensity = round(s_red[nav_peak_index][0], 0)
+            nav_peak_index = np.where(s_red == max(s_red[int(len(s_red) * .25): int(len(s_red) * .75)]))
+            nav_peak_distance = (x_red / PIXEL_RESOLUTION)[nav_peak_index]
+            nav_peak_intensity = round(s_red[nav_peak_index][0], 0)
 
-    # Get Bounds of peri-nodes
-    # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
+            # Get Bounds of peri-nodes
+            # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
 
-    hit_min = False
-    cross_up = False
-    bounds_array = []
+            hit_min = False
+            cross_up = False
+            bounds_array = []
 
-    for entry in s_green[caspr_trough_index[0][0]:]:
-        if entry == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]):
-            hit_min = True
-        if entry >= threshold and hit_min:
-            cross_up = True
-            right_perinode_bound = np.where(s_green == entry)[0][0]
-            bounds_array.append(right_perinode_bound)
-        if entry <= threshold and cross_up:
-            break
+            for entry in s_green[caspr_trough_index[0][0]:]:
+                if entry == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]):
+                    hit_min = True
+                if entry >= threshold and hit_min:
+                    cross_up = True
+                    right_perinode_bound = np.where(s_green == entry)[0][0]
+                    bounds_array.append(right_perinode_bound)
+                if entry <= threshold and cross_up:
+                    break
 
-    right_perinode_bound1 = bounds_array[0]
-    right_perinode_bound2 = bounds_array[-1]
+            right_perinode_bound1 = bounds_array[0]
+            right_perinode_bound2 = bounds_array[-1]
 
-    # [Left Side]: Same idea as for the right side. Flipped array so that it starts at the minima
-    cross_up = False
-    bounds_array2 = []
-    s_green_from_min_to_start = np.flipud(s_green[0:caspr_trough_index[0][0]])
-    for entry in s_green_from_min_to_start:
-        if entry >= threshold:
-            cross_up = True
-            left_perinode_bound = np.where(s_green == entry)[0][0]
-            bounds_array2.append(left_perinode_bound)
-        if entry <= threshold and cross_up:
-            break
+            # [Left Side]: Same idea as for the right side. Flipped array so that it starts at the minima
+            cross_up = False
+            bounds_array2 = []
+            s_green_from_min_to_start = np.flipud(s_green[0:caspr_trough_index[0][0]])
+            for entry in s_green_from_min_to_start:
+                if entry >= threshold:
+                    cross_up = True
+                    left_perinode_bound = np.where(s_green == entry)[0][0]
+                    bounds_array2.append(left_perinode_bound)
+                if entry <= threshold and cross_up:
+                    break
 
-    left_perinode_bound1 = bounds_array2[0]
-    left_perinode_bound2 = bounds_array2[-1]
+            left_perinode_bound1 = bounds_array2[0]
+            left_perinode_bound2 = bounds_array2[-1]
 
-    # Critical Points for Scatter Plot Visualization
-    critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION, left_perinode_max_index / PIXEL_RESOLUTION,
-                         right_perinode_max_index / PIXEL_RESOLUTION, right_perinode_bound1 / PIXEL_RESOLUTION,
-                         right_perinode_bound2 / PIXEL_RESOLUTION, left_perinode_bound1 / PIXEL_RESOLUTION,
-                         left_perinode_bound2 / PIXEL_RESOLUTION]
-    critical_points_y = [s_green[caspr_trough_index][0], s_green[left_perinode_max_index],
-                         s_green[right_perinode_max_index], threshold, threshold, threshold, threshold]
+            # Critical Points for Scatter Plot Visualization
+            critical_points_x = [caspr_trough_index[0] / PIXEL_RESOLUTION, left_perinode_max_index / PIXEL_RESOLUTION,
+                                 right_perinode_max_index / PIXEL_RESOLUTION, right_perinode_bound1 / PIXEL_RESOLUTION,
+                                 right_perinode_bound2 / PIXEL_RESOLUTION, left_perinode_bound1 / PIXEL_RESOLUTION,
+                                 left_perinode_bound2 / PIXEL_RESOLUTION]
+            critical_points_y = [s_green[caspr_trough_index][0], s_green[left_perinode_max_index],
+                                 s_green[right_perinode_max_index], threshold, threshold, threshold, threshold]
 
-    red_peak_x = [nav_peak_index[0] / PIXEL_RESOLUTION]
-    red_peak_y = [s_red[nav_peak_index][0]]
+            red_peak_x = [nav_peak_index[0] / PIXEL_RESOLUTION]
+            red_peak_y = [s_red[nav_peak_index][0]]
 
-    # Get Node Measurements
-    left_perinode_length = abs(left_perinode_bound1 - left_perinode_bound2) / PIXEL_RESOLUTION
-    right_perinode_length = abs(right_perinode_bound1 - right_perinode_bound2) / PIXEL_RESOLUTION
+            # Get Node Measurements
+            left_perinode_length = abs(left_perinode_bound1 - left_perinode_bound2) / PIXEL_RESOLUTION
+            right_perinode_length = abs(right_perinode_bound1 - right_perinode_bound2) / PIXEL_RESOLUTION
 
-    average_perinode_length = round((left_perinode_length + right_perinode_length) / 2, 2)
-    node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
-    node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
+            average_perinode_length = round((left_perinode_length + right_perinode_length) / 2, 2)
+            node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
+            node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
+            if left_perinode_length > right_perinode_length:
+                perinode_asymmetry = round(left_perinode_length / right_perinode_length, 2)
+            else:
+                perinode_asymmetry = round(right_perinode_length / left_perinode_length, 2)
 
-    results_list = [f'{roi_name_1}', average_perinode_length, node_length, node_shift,
-                    average_perinode_intensity, nav_peak_intensity]
-    results_dict = {
-        'ROI Name': f'{roi_name_1}',
-        'Avg. Perinode Length (um)': average_perinode_length,
-        'Node Length (um)': node_length,
-        'Node Shift (um)': node_shift,
-        'Avg. Peak Perinode Intensity': average_perinode_intensity,
-        'Peak NaV Intensity': nav_peak_intensity
-    }
+            image_identity = re.split('C1_|.png', caspr_image_path)[1]
 
-    try:
-        df = df.append(results_dict, ignore_index=True)
-    except NameError:
-        df = pd.DataFrame(results_list).T
-        df.columns = ['ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)', 'Node Shift (um)',
-                      'Avg. Peak Perinode Intensity', 'Peak NaV Intensity']
+            results_list = [image_identity, f'{roi_name_1}', average_perinode_length, node_length, node_shift,
+                            average_perinode_intensity, nav_peak_intensity, perinode_asymmetry]
 
-    # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
+            results_dict = {
+                'Image Identity': image_identity,
+                'ROI Name': f'{roi_name_1}',
+                'Avg. Perinode Length (um)': average_perinode_length,
+                'Node Length (um)': node_length,
+                'Node Shift (um)': node_shift,
+                'Avg. Peak Perinode Intensity': average_perinode_intensity,
+                'Peak NaV Intensity': nav_peak_intensity,
+                'Perinode Asymmetry': perinode_asymmetry
+            }
 
-    # Plotting and Visualization
-    fig = plt.figure(figsize=(12, 8))
-    ax = plt.axes()
-    ax.set_facecolor("#7c8594")
-    plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#0e1d35')
-    plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dddee5')
-    plt.scatter(critical_points_x, critical_points_y, color='green')
-    plt.scatter(red_peak_x, red_peak_y, color='green')
-    plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
+            try:
+                df = df.append(results_dict, ignore_index=True)
+            except NameError:
+                df = pd.DataFrame(results_list).T
+                df.columns = ['Image Identity', 'ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)',
+                              'Node Shift (um)', 'Avg. Peak Perinode Intensity', 'Peak NaV Intensity',
+                              'Perinode Asymmetry']
 
-    plt.ylabel('8-bit Intensity', fontsize=14)
-    plt.xlabel('Distance in Microns', fontsize=14)
-    plt.title(f'Caspr1 & Nav1.6 Intensity Distributions\n ROI:{roi_name_1}', fontsize=16)
+            # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
-    plt.legend(facecolor='#7c8594')
-    plt.savefig(f'figures/{roi_name_1}.png')
+            # Plotting and Visualization
+            fig = plt.figure(figsize=(12, 8))
+            ax = plt.axes()
+            ax.set_facecolor("#7c8594")
+            plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#0e1d35')
+            plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dddee5')
+            plt.scatter(critical_points_x, critical_points_y, color='green')
+            plt.scatter(red_peak_x, red_peak_y, color='green')
+            plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
 
-df.to_excel('Results.xlsx')
+            plt.ylabel('8-bit Intensity', fontsize=14)
+            plt.xlabel('Distance in Microns', fontsize=14)
+            plt.title(f'Caspr1 & Nav1.6 Intensity Distributions\n ROI:{roi_name_1}', fontsize=16)
+
+            plt.legend(facecolor='#7c8594')
+            plt.savefig(f'figures/{roi_name_1}.png')
+            plt.close(fig)
+        except Exception as e:
+            print(f'Error with {roi_name_1}: {e}')
+    df.to_excel('Results.xlsx')
+
+
+process_all_rois_for_an_image(caspr_image_path='C1_12 Right (M2).png', nav_image_path='C2_12 Right (M2).png')
