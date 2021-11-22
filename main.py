@@ -17,8 +17,8 @@ def get_data(channel, img_path, roi_number):
     channel = channel
     image_path = img_path
 
-    roi_list = sorted(os.listdir('RoiSet'))
-    roi = ImagejRoi.fromfile(f'RoiSet/{roi_list[roi_number]}')
+    roi_list = sorted(os.listdir(ROI_directory))
+    roi = ImagejRoi.fromfile(ROI_directory + f'/{roi_list[roi_number]}')
 
     # Linear interpolation of pixels isn't as straightforward as y=mx+b.
     # Bresenham's algorithm determines the pixels to color to render a line between two points.
@@ -109,7 +109,7 @@ def get_data(channel, img_path, roi_number):
 
 
 def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
-    number_of_rois = len(os.listdir('RoiSet'))
+    number_of_rois = len(os.listdir(ROI_directory))
 
     for r in range(number_of_rois):
         try:
@@ -191,10 +191,13 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
             average_perinode_length = round((left_perinode_length + right_perinode_length) / 2, 2)
             node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
             node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
-            if left_perinode_length > right_perinode_length:
-                perinode_asymmetry = round(left_perinode_length / right_perinode_length, 2)
-            else:
-                perinode_asymmetry = round(right_perinode_length / left_perinode_length, 2)
+            try:
+                if left_perinode_length > right_perinode_length:
+                    perinode_asymmetry = round(left_perinode_length / right_perinode_length, 2)
+                else:
+                    perinode_asymmetry = round(right_perinode_length / left_perinode_length, 2)
+            except RuntimeWarning:
+                perinode_asymmetry = 'Zero Division Error'
 
             image_identity = re.split('C1_|.png', caspr_image_path)[1]
 
@@ -241,7 +244,29 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
             plt.close(fig)
         except Exception as e:
             print(f'Error with {roi_name_1}: {e}')
-    df.to_excel('Results.xlsx')
+
+    df.to_excel(f'Excel Output/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
 
 
-process_all_rois_for_an_image(caspr_image_path='C1_12 Right (M2).png', nav_image_path='C2_12 Right (M2).png')
+def process_animal(animal_identity, eye_side):
+    file_and_folder_array = os.listdir(f'{animal_identity}/{eye_side}')
+    list_of_caspr_png = []
+    list_of_nav_png = []
+
+    for element in file_and_folder_array:
+        if '.png' and 'C1_' in element:
+            list_of_caspr_png.append(element)
+        if '.png' and 'C2_' in element:
+            list_of_nav_png.append(element)
+    zipped_caspr_nav_filenames = zip(list_of_caspr_png, list_of_nav_png)
+
+    for (caspr, nav) in zipped_caspr_nav_filenames:
+        ROI_folder_name = f'RoiSet#{caspr.strip(".png")}'
+        global ROI_directory
+        ROI_directory = f'{animal_identity}/{eye_side}/{ROI_folder_name}'
+        process_all_rois_for_an_image(caspr_image_path=f'{animal_identity}/{eye_side}/{caspr}',
+                                      nav_image_path=f'{animal_identity}/{eye_side}/{nav}')
+
+
+process_animal('12', 'Left')
+process_animal('12', 'Right')
