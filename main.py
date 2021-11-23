@@ -8,6 +8,7 @@ import scipy
 from scipy import signal
 import re
 import pandas as pd
+from pathlib import Path
 
 # Pixel resolution px/um
 PIXEL_RESOLUTION = 16.129
@@ -112,6 +113,7 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
     number_of_rois = len(os.listdir(ROI_directory))
 
     for r in range(number_of_rois):
+        keep_datapoint = True
         try:
             x_green, y_green, s_green, roi_name_1 = get_data('green', caspr_image_path, r)
             x_red, y_red, s_red, roi_name_2 = get_data('red', nav_image_path, r)
@@ -131,7 +133,9 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
 
             average_maxima = (s_green[left_perinode_max_index] + s_green[right_perinode_max_index]) / 2
             minima = s_green[caspr_trough_index][0]
-            threshold = minima + ((average_maxima - minima) / 2)
+            lower_max = min(s_green[left_perinode_max_index], s_green[right_perinode_max_index])
+            threshold = minima + ((lower_max - minima) / 2)
+
             average_perinode_intensity = round((left_perinode_intensity + right_perinode_intensity) / 2, 0)
 
             nav_peak_index = np.where(s_red == max(s_red[int(len(s_red) * .25): int(len(s_red) * .75)]))
@@ -141,18 +145,19 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
             # Get Bounds of peri-nodes
             # [Right Side]: starts at trough and moves rightward. First cross below threshold stops it.
 
+            # BUG FIX!: For some reason, it thinks the indices are backwards. So left_perinode_max index is really
+            # right_perinode_max_index. Thats why the below code references the opposite side line 158, 174
+
             hit_min = False
             cross_up = False
             bounds_array = []
 
             for entry in s_green[caspr_trough_index[0][0]:]:
-                if entry == min(s_green[int(len(s_green) * .25): int(len(s_green) * .75)]):
-                    hit_min = True
-                if entry >= threshold and hit_min:
+                if entry >= threshold:
                     cross_up = True
                     right_perinode_bound = np.where(s_green == entry)[0][0]
                     bounds_array.append(right_perinode_bound)
-                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] <= right_perinode_max_index:
+                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] >= left_perinode_max_index:
                     # print(entry, threshold, np.where(s_green == entry)[0][0], right_perinode_max_index)
                     break
 
@@ -168,8 +173,7 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                     cross_up = True
                     left_perinode_bound = np.where(s_green == entry)[0][0]
                     bounds_array2.append(left_perinode_bound)
-                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] >= left_perinode_max_index:
-                    print(entry, threshold, np.where(s_green == entry)[0][0], left_perinode_max_index)
+                if entry <= threshold and cross_up and np.where(s_green == entry)[0][0] <= right_perinode_max_index:
                     break
 
             left_perinode_bound1 = bounds_array2[0]
@@ -193,6 +197,10 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
             average_perinode_length = round((left_perinode_length + right_perinode_length) / 2, 2)
             node_length = round(abs(right_perinode_bound1 - left_perinode_bound1) / PIXEL_RESOLUTION, 2)
             node_shift = round(abs(nav_peak_distance - caspr_trough_distance)[0], 2)
+
+            if node_shift > 0.65 * node_length:
+                keep_datapoint = False
+
             try:
                 if left_perinode_length > right_perinode_length:
                     perinode_asymmetry = round(left_perinode_length / right_perinode_length, 2)
@@ -217,40 +225,47 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                 'Perinode Asymmetry': perinode_asymmetry
             }
 
-            try:
-                df = df.append(results_dict, ignore_index=True)
-            except NameError:
-                df = pd.DataFrame(results_list).T
-                df.columns = ['Image Identity', 'ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)',
-                              'Node Shift (um)', 'Avg. Peak Perinode Intensity', 'Peak NaV Intensity',
-                              'Perinode Asymmetry']
+            if keep_datapoint:
+                try:
+                    df = df.append(results_dict, ignore_index=True)
+                except NameError:
+                    df = pd.DataFrame(results_list).T
+                    df.columns = ['Image Identity', 'ROI Name', 'Avg. Perinode Length (um)', 'Node Length (um)',
+                                  'Node Shift (um)', 'Avg. Peak Perinode Intensity', 'Peak NaV Intensity',
+                                  'Perinode Asymmetry']
 
-            # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
+                # area_perinode_left = integrate.simpson(s_green[bounds] - threshold[bounds], x_array[bounds])
 
-            # Plotting and Visualization
-            fig = plt.figure(figsize=(12, 8))
-            ax = plt.axes()
-            ax.set_facecolor("#7c8594")
-            plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#0e1d35')
-            plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav1.6', color='#dddee5')
-            plt.scatter(critical_points_x, critical_points_y, color='green')
-            plt.scatter(red_peak_x, red_peak_y, color='green')
-            plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
+                # Plotting and Visualization
+                fig = plt.figure(figsize=(12, 8))
+                ax = plt.axes()
+                ax.set_facecolor("#7c8594")
+                plt.plot(x_green / PIXEL_RESOLUTION, s_green, label='Caspr1', color='#0e1d35')
+                # plt.scatter(x_green / PIXEL_RESOLUTION, s_green, color='orange')
+                # plt.plot(x_green / PIXEL_RESOLUTION, y_green, color='red')
+                plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav 1.6', color='#dddee5')
+                plt.scatter(critical_points_x, critical_points_y, color='#1167b1', label='Caspr1 Critical Points')
+                plt.scatter(red_peak_x, red_peak_y, color='#d2b48c', label='Nav 1.6 Critical Point')
+                plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
 
-            plt.ylabel('8-bit Intensity', fontsize=14)
-            plt.xlabel('Distance in Microns', fontsize=14)
-            plt.title(f'Caspr1 & Nav1.6 Intensity Distributions\n ROI:{roi_name_1}', fontsize=16)
+                plt.ylabel('8-bit Intensity', fontsize=14)
+                plt.xlabel('Distance in Microns', fontsize=14)
+                plt.title(f'Caspr1 & Nav1.6 Intensity Distributions\n ROI:{roi_name_1}', fontsize=16)
 
-            plt.legend(facecolor='#7c8594')
-            plt.savefig(f'figures/{roi_name_1}.png')
-            plt.close(fig)
+                plt.legend(facecolor='#7c8594')
+                Path(f"figures/{caspr_image_path.split('/')[-1].strip('.png')}").mkdir(parents=True, exist_ok=True)
+                plt.savefig(f"figures/{caspr_image_path.split('/')[-1].strip('.png')}/{roi_name_1}.png")
+                plt.close(fig)
         except Exception as e:
             try:
                 print(f'Error with {roi_name_1}: {e}')
             except UnboundLocalError:
                 print(f'Error with Unknown ROI: {e}')
 
-    df.to_excel(f'Excel Output/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
+    try:
+        df.to_excel(f'Excel Output/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
+    except UnboundLocalError:
+        pass
 
 
 def process_animal(animal_identity, eye_side):
