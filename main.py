@@ -246,7 +246,8 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                 plt.plot(x_red / PIXEL_RESOLUTION, s_red, label='Nav 1.6', color='#dddee5')
                 plt.scatter(critical_points_x, critical_points_y, color='#1167b1', label='Caspr1 Critical Points')
                 plt.scatter(red_peak_x, red_peak_y, color='#d2b48c', label='Nav 1.6 Critical Point')
-                plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green', label='Threshold')
+                plt.plot(x_green / PIXEL_RESOLUTION, np.full(x_green.shape, threshold), color='green',
+                         label='Threshold')
 
                 plt.ylabel('8-bit Intensity', fontsize=14)
                 plt.xlabel('Distance in Microns', fontsize=14)
@@ -263,9 +264,17 @@ def process_all_rois_for_an_image(caspr_image_path, nav_image_path):
                 print(f'Error with Unknown ROI: {e}')
 
     try:
-        df.to_excel(f'Excel Output/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
+        df.to_excel(f'Excel Output/individual images/{caspr_image_path.split("/")[-1].strip(".png").strip("C1")}_Results.xlsx')
     except UnboundLocalError:
         pass
+
+    try:
+        return df
+    except UnboundLocalError:
+        return pd.DataFrame(columns=['Image Identity', 'ROI Name', 'Avg. Perinode Length (um)',
+                                     'Node Length (um)', 'Node Shift (um)',
+                                     'Avg. Peak Perinode Intensity', 'Peak NaV Intensity',
+                                     'Perinode Asymmetry'])
 
 
 def process_animal(animal_identity, eye_side):
@@ -280,13 +289,22 @@ def process_animal(animal_identity, eye_side):
             list_of_nav_png.append(element)
     zipped_caspr_nav_filenames = zip(list_of_caspr_png, list_of_nav_png)
 
+    whole_animal_dataframe = pd.DataFrame(columns=['Image Identity', 'ROI Name', 'Avg. Perinode Length (um)',
+                                                   'Node Length (um)', 'Node Shift (um)',
+                                                   'Avg. Peak Perinode Intensity', 'Peak NaV Intensity',
+                                                   'Perinode Asymmetry'])
+
     for (caspr, nav) in zipped_caspr_nav_filenames:
         ROI_folder_name = f'RoiSet#{caspr.strip(".png")}'
         global ROI_directory
         ROI_directory = f'{animal_identity}/{eye_side}/{ROI_folder_name}'
-        process_all_rois_for_an_image(caspr_image_path=f'{animal_identity}/{eye_side}/{caspr}',
-                                      nav_image_path=f'{animal_identity}/{eye_side}/{nav}')
+        single_image_dataframe = process_all_rois_for_an_image(caspr_image_path=f'{animal_identity}/{eye_side}/{caspr}',
+                                                               nav_image_path=f'{animal_identity}/{eye_side}/{nav}')
+        whole_animal_dataframe = pd.concat([whole_animal_dataframe, single_image_dataframe], ignore_index=True)
+
+    Path(f"Excel Output/{animal_identity}").mkdir(parents=True, exist_ok=True)
+    whole_animal_dataframe.to_excel(f'Excel Output/{animal_identity}/{eye_side}_overall_results.xlsx')
 
 
-process_animal('12', 'Left')
-process_animal('12', 'Right')
+# process_animal('12', 'Left')
+# process_animal('12', 'Right')
